@@ -2,6 +2,7 @@ import csv
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
+
 class QuizApp:
     def __init__(self, master):
         self.master = master
@@ -12,6 +13,8 @@ class QuizApp:
         self.current_question_index = 0
         self.score = 0
         self.selected_option = tk.IntVar()  # pour les boutons radio
+        self.timer = None
+        self.time_left = 0
 
         # Interface principale
         self.frame_intro = tk.Frame(self.master)
@@ -28,14 +31,11 @@ class QuizApp:
         
         self.label_question = tk.Label(self.frame_quiz, text="", wraplength=500, justify="left", font=("Helvetica", 12, "bold"))
         self.label_question.pack(pady=10)
-        
-        self.radio_buttons = []
-        for i in range(5):
-            rb = tk.Radiobutton(self.frame_quiz, text="", variable=self.selected_option, 
-                                value=i+1, wraplength=500, justify="left", anchor="w")
-            rb.pack(anchor="w")
-            self.radio_buttons.append(rb)
 
+        self.label_timer = tk.Label(self.frame_quiz, text="", font=("Helvetica", 10, "bold"), fg="red")
+        self.label_timer.pack(pady=5)
+
+        self.radio_buttons = []  # Boutons pour les options
         self.button_next = tk.Button(self.frame_quiz, text="Valider et question suivante", command=self.next_question)
         self.button_next.pack(pady=10)
 
@@ -54,7 +54,6 @@ class QuizApp:
                 reader = csv.DictReader(f, delimiter=';')
                 self.questions = []
                 for row in reader:
-                    # On va chercher chaque champ tel que dans l'entête
                     question_text = row["Question Text"].strip()
                     question_type = row["Question Type"].strip()
                     options = [
@@ -65,13 +64,15 @@ class QuizApp:
                         row["Option 5"].strip(),
                     ]
                     correct_answer = row["Correct Answer"].strip()
+                    time_limit = int(row["Time in seconds"].strip()) if row["Time in seconds"].strip().isdigit() else 30
                     explanation = row["Answer explanation"].strip()
                     
                     self.questions.append({
                         "question": question_text,
                         "type": question_type,
-                        "options": options,
-                        "correct": correct_answer,  # "1", "2", "3", etc.
+                        "options": [opt for opt in options if opt],  # Filtrer les options vides
+                        "correct": correct_answer,
+                        "time_limit": time_limit,
                         "explanation": explanation
                     })
         except Exception as e:
@@ -96,35 +97,60 @@ class QuizApp:
         # Remise à zéro de la sélection (0 => rien de coché)
         self.selected_option.set(0)
 
+        # Stopper tout timer en cours
+        if self.timer:
+            self.master.after_cancel(self.timer)
+            self.timer = None
+
+        # Charger la question courante
         question_data = self.questions[self.current_question_index]
-        self.label_question.config(text=f"Q{self.current_question_index+1}. {question_data['question']}")
+        self.label_question.config(text=f"Q{self.current_question_index + 1}. {question_data['question']}")
 
         # Mettre à jour les options
+        for rb in self.radio_buttons:
+            rb.pack_forget()  # Masquer les anciens boutons
+        self.radio_buttons.clear()
+
         for i, option_text in enumerate(question_data['options']):
-            self.radio_buttons[i].config(text=option_text)
-            self.radio_buttons[i].pack(anchor="w")
+            rb = tk.Radiobutton(self.frame_quiz, text=option_text, variable=self.selected_option, 
+                                value=i + 1, wraplength=500, justify="left", anchor="w")
+            rb.pack(anchor="w")
+            self.radio_buttons.append(rb)
         
-        # Si le type n'est pas "Multiple Choice", on pourrait gérer différemment
-        # Pour l'exemple, on reste sur l'affichage de 5 options
-        
-    def next_question(self):
+        # Configurer le timer
+        self.time_left = question_data['time_limit']
+        self.update_timer()
+
+    def update_timer(self):
+        """Met à jour le temps restant pour la question."""
+        if self.time_left > 0:
+            self.label_timer.config(text=f"Temps restant : {self.time_left} s")
+            self.time_left -= 1
+            self.timer = self.master.after(1000, self.update_timer)  # Mise à jour toutes les secondes
+        else:
+            self.next_question(timeout=True)
+
+    def next_question(self, timeout=False):
         """Vérifie la réponse courante, incrémente le score si besoin, puis passe à la question suivante."""
         question_data = self.questions[self.current_question_index]
         correct_answer = question_data["correct"]
 
         # Récupérer l'option sélectionnée (entier)
-        user_answer = self.selected_option.get()  # 1,2,3,4,5 ou 0 si rien
-        if user_answer == 0:
+        user_answer = self.selected_option.get()  # 1,2,3,4,... ou 0 si rien
+        if not timeout and user_answer == 0:
             messagebox.showwarning("Attention", "Veuillez sélectionner une réponse.")
             return
         
-        # Comparer
-        if str(user_answer) == correct_answer:
+        # Comparer si le temps n'est pas écoulé
+        if not timeout and str(user_answer) == correct_answer:
             self.score += 1
         
-        # Pour information, on peut afficher l'explication si on veut
-        # messagebox.showinfo("Explication", question_data['explanation'])
-        
+        # Arrêter le timer pour la question courante
+        if self.timer:
+            self.master.after_cancel(self.timer)
+            self.timer = None
+
+        # Passer à la question suivante
         self.current_question_index += 1
         if self.current_question_index < len(self.questions):
             self.show_question()
@@ -135,8 +161,6 @@ class QuizApp:
         """Affiche le score final et termine le quiz."""
         total_questions = len(self.questions)
         messagebox.showinfo("Quiz terminé", f"Votre score : {self.score}/{total_questions}")
-        
-        # On peut fermer la fenêtre ou ré-initialiser
         self.master.quit()
 
 
