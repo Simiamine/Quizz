@@ -6,12 +6,13 @@ from tkinter import filedialog, messagebox
 class QuizApp:
     def __init__(self, master):
         self.master = master
-        self.master.title("Quiz")
+        self.master.title("Quiz Big Data")
         
         # Variables pour le quiz
         self.questions = []
         self.current_question_index = 0
         self.score = 0
+        self.total_questions_answered = 0
         self.selected_option = tk.IntVar()  # pour les boutons radio
         self.timer = None
         self.time_left = 0
@@ -36,7 +37,14 @@ class QuizApp:
         self.label_timer.pack(pady=5)
 
         self.radio_buttons = []  # Boutons pour les options
-        self.button_next = tk.Button(self.frame_quiz, text="Valider et question suivante", command=self.next_question)
+
+        self.label_feedback = tk.Label(self.frame_quiz, text="", font=("Helvetica", 10, "italic"), fg="blue", wraplength=500, justify="left")
+        self.label_feedback.pack(pady=5)
+
+        self.label_score = tk.Label(self.frame_quiz, text="Score : 0/0", font=("Helvetica", 10, "bold"), fg="green")
+        self.label_score.pack(pady=5)
+
+        self.button_next = tk.Button(self.frame_quiz, text="Valider", command=self.validate_answer)
         self.button_next.pack(pady=10)
 
     def load_csv(self):
@@ -90,6 +98,7 @@ class QuizApp:
         # Initialisation du quiz
         self.current_question_index = 0
         self.score = 0
+        self.total_questions_answered = 0
         self.show_question()
 
     def show_question(self):
@@ -105,6 +114,8 @@ class QuizApp:
         # Charger la question courante
         question_data = self.questions[self.current_question_index]
         self.label_question.config(text=f"Q{self.current_question_index + 1}. {question_data['question']}")
+        self.label_feedback.config(text="")  # Effacer le feedback précédent
+        self.label_score.config(text=f"Score : {self.score}/{self.total_questions_answered}")
 
         # Mettre à jour les options
         for rb in self.radio_buttons:
@@ -128,39 +139,54 @@ class QuizApp:
             self.time_left -= 1
             self.timer = self.master.after(1000, self.update_timer)  # Mise à jour toutes les secondes
         else:
-            self.next_question(timeout=True)
+            self.validate_answer(timeout=True)
 
-    def next_question(self, timeout=False):
-        """Vérifie la réponse courante, incrémente le score si besoin, puis passe à la question suivante."""
+    def validate_answer(self, timeout=False):
+        """Valide la réponse courante et affiche un feedback."""
         question_data = self.questions[self.current_question_index]
         correct_answer = question_data["correct"]
+        explanation = question_data["explanation"]
 
-        # Récupérer l'option sélectionnée (entier)
-        user_answer = self.selected_option.get()  # 1,2,3,4,... ou 0 si rien
-        if not timeout and user_answer == 0:
-            messagebox.showwarning("Attention", "Veuillez sélectionner une réponse.")
-            return
-        
-        # Comparer si le temps n'est pas écoulé
-        if not timeout and str(user_answer) == correct_answer:
-            self.score += 1
-        
-        # Arrêter le timer pour la question courante
+        # Arrêter le timer
         if self.timer:
             self.master.after_cancel(self.timer)
             self.timer = None
 
+        # Vérification de la réponse
+        user_answer = self.selected_option.get()
+        if not timeout and user_answer == 0:
+            messagebox.showwarning("Attention", "Veuillez sélectionner une réponse.")
+            return
+
+        # Calcul du feedback
+        if not timeout and str(user_answer) == correct_answer:
+            self.score += 1
+            feedback = f"Correct ! 🎉\nExplication : {explanation}"
+        elif timeout:
+            feedback = f"Temps écoulé ! ❌\nExplication : {explanation}"
+        else:
+            feedback = f"Incorrect. ❌\nExplication : {explanation}"
+
+        self.label_feedback.config(text=feedback)
+        self.total_questions_answered += 1
+        self.label_score.config(text=f"Score : {self.score}/{self.total_questions_answered}")
+
         # Passer à la question suivante
+        self.button_next.config(text="Question suivante", command=self.next_question)
+
+    def next_question(self):
+        """Passe à la question suivante ou termine le quiz."""
         self.current_question_index += 1
         if self.current_question_index < len(self.questions):
             self.show_question()
+            self.button_next.config(text="Valider", command=self.validate_answer)
         else:
             self.end_quiz()
 
     def end_quiz(self):
         """Affiche le score final et termine le quiz."""
         total_questions = len(self.questions)
-        messagebox.showinfo("Quiz terminé", f"Votre score : {self.score}/{total_questions}")
+        messagebox.showinfo("Quiz terminé", f"Votre score final : {self.score}/{total_questions}")
         self.master.quit()
 
 
