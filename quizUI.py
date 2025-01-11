@@ -1,3 +1,5 @@
+import os
+import shutil
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from quizLogic import QuizLogic
@@ -16,19 +18,52 @@ class QuizApp:
         self.timer = None
         self.time_left = 0
 
-        # Interface principale
+        # Cadres de l'interface
         self.frame_intro = tk.Frame(self.master)
-        self.frame_intro.pack(pady=20)
-        
-        self.label_intro = tk.Label(self.frame_intro, text="Bienvenue dans le Quiz Big Data !\nSélectionnez un fichier CSV pour commencer.")
-        self.label_intro.pack(pady=10)
-        
-        self.button_load_csv = tk.Button(self.frame_intro, text="Charger un CSV", command=self.load_csv)
-        self.button_load_csv.pack()
-
-        # Frame pour le quiz
+        self.frame_choose_quiz = tk.Frame(self.master)
         self.frame_quiz = tk.Frame(self.master)
-        
+
+        self.create_intro_frame()
+        self.create_choose_quiz_frame()
+        self.create_quiz_frame()
+
+        # Afficher le cadre d'introduction au démarrage
+        self.show_frame(self.frame_intro)
+
+    def show_frame(self, frame):
+        """Affiche un cadre spécifique et masque les autres."""
+        for f in (self.frame_intro, self.frame_choose_quiz, self.frame_quiz):
+            f.pack_forget()
+        frame.pack(pady=20)
+
+    def create_intro_frame(self):
+        """Crée le cadre d'introduction."""
+        label_intro = tk.Label(self.frame_intro, text="Bienvenue dans le Quiz Big Data !")
+        label_intro.pack(pady=10)
+
+        button_choose_quiz = tk.Button(self.frame_intro, text="Choisir un quiz", command=self.show_choose_quiz)
+        button_choose_quiz.pack(pady=5)
+
+        button_add_quiz = tk.Button(self.frame_intro, text="Ajouter un quiz", command=self.add_quiz)
+        button_add_quiz.pack(pady=5)
+
+    def create_choose_quiz_frame(self):
+        """Crée le cadre de sélection d'un quiz."""
+        self.label_choose_quiz = tk.Label(self.frame_choose_quiz, text="Sélectionnez un fichier quiz :")
+        self.label_choose_quiz.pack(pady=10)
+
+        self.quiz_var = tk.StringVar()
+        self.dropdown_quiz = tk.OptionMenu(self.frame_choose_quiz, self.quiz_var, [])
+        self.dropdown_quiz.pack(pady=10)
+
+        button_back = tk.Button(self.frame_choose_quiz, text="Retour", command=lambda: self.show_frame(self.frame_intro))
+        button_back.pack(pady=5, side=tk.LEFT)
+
+        button_start = tk.Button(self.frame_choose_quiz, text="Lancer le quiz", command=self.load_selected_quiz)
+        button_start.pack(pady=5, side=tk.RIGHT)
+
+    def create_quiz_frame(self):
+        """Crée le cadre du quiz."""
         self.label_question = tk.Label(self.frame_quiz, text="", wraplength=500, justify="left", font=("Helvetica", 12, "bold"))
         self.label_question.pack(pady=10)
 
@@ -46,24 +81,57 @@ class QuizApp:
         self.button_next = tk.Button(self.frame_quiz, text="Valider", command=self.validate_answer)
         self.button_next.pack(pady=10)
 
-    def load_csv(self):
-        """Ouvre une boîte de dialogue pour charger le fichier CSV."""
+    def show_choose_quiz(self):
+        """Affiche la liste des quiz disponibles dans le dossier res."""
+        quiz_dir = "res"
+        if not os.path.exists(quiz_dir):
+            os.makedirs(quiz_dir)
+
+        quiz_files = [f for f in os.listdir(quiz_dir) if f.endswith(".csv")]
+        if not quiz_files:
+            messagebox.showinfo("Aucun quiz", "Aucun fichier quiz trouvé dans le dossier res.")
+            return
+
+        # Mettre à jour la liste déroulante
+        self.quiz_var.set(quiz_files[0])
+        menu = self.dropdown_quiz["menu"]
+        menu.delete(0, "end")
+        for quiz in quiz_files:
+            menu.add_command(label=quiz, command=lambda q=quiz: self.quiz_var.set(q))
+
+        self.show_frame(self.frame_choose_quiz)
+
+    def add_quiz(self):
+        """Ajoute un fichier quiz dans le dossier res."""
         filename = filedialog.askopenfilename(
-            title="Sélectionner un fichier CSV",
+            title="Ajouter un fichier quiz",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
         )
         if not filename:
-            return
+            return  # L'utilisateur a annulé
 
+        quiz_dir = "res"
+        if not os.path.exists(quiz_dir):
+            os.makedirs(quiz_dir)
+
+        dest_path = os.path.join(quiz_dir, os.path.basename(filename))
         try:
-            self.quiz.load_questions_from_csv(filename)
+            shutil.copy(filename, dest_path)
+            messagebox.showinfo("Succès", f"Le fichier {os.path.basename(filename)} a été ajouté au dossier res.")
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Impossible d'ajouter le fichier : {e}")
+
+    def load_selected_quiz(self):
+        """Charge un fichier quiz sélectionné et passe au quiz."""
+        selected_quiz = os.path.join("res", self.quiz_var.get())
+        try:
+            self.quiz.load_questions_from_csv(selected_quiz)
         except ValueError as e:
             messagebox.showerror("Erreur", str(e))
             return
 
-        # Passer à l'interface de quiz
-        self.frame_intro.pack_forget()
-        self.frame_quiz.pack(pady=20)
+        # Passer au quiz
+        self.show_frame(self.frame_quiz)
         self.show_question()
 
     def show_question(self):
@@ -132,7 +200,7 @@ class QuizApp:
         """Affiche le score final."""
         total_questions = self.quiz.get_total_questions()
         messagebox.showinfo("Quiz terminé", f"Votre score final : {self.quiz.score}/{total_questions}")
-        self.master.quit()
+        self.show_frame(self.frame_intro)
 
 
 def main():
